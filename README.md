@@ -39,6 +39,17 @@
 100トークン枠なら140回以上テスト実行できる計算。ドメインサイズ(768³)・反復数(500)は
 この時間内に余裕を持って収まるよう控えめに設定している(必要なら`payload.sh`内の`NX/NY/NZ/ITERS`を調整)。
 
+### ジョブスクリプトの実行モデル
+
+Miyabi-Gのqsubラッパーは、渡したスクリプト本体を**ランクごとに1回ずつ(サンドボックス化して)実行する**
+(内部的に`bwrap`経由で1プロセス=1サンドボックスとして起動される)。そのため:
+
+- スクリプト内で`mpirun`を呼んではいけない(呼ぶとラッパーに拒否される。コメント中の文字列も含めて検出される)。
+- `./stencil3d ...`は「実行ファイルを直接書く」だけでよく、実行環境が自動的に全ノード分のランクとして展開する。
+- ビルド(`git clone`/`make`)のような一度だけ行いたい処理は`$PBSWRAP_RANK`で分岐し、
+  rank 0だけが実行、他rankは共有Lustre領域(`/work`)上のマーカーファイルをポーリングして完了を待つ
+  (`job/payload.sh`参照)。
+
 ### 同期・投入フロー
 
 Miyabi側で許可されている操作は `qstat` / `qsub` / `ls` / `tail` / `grep` / `qdel` のみで、
@@ -46,8 +57,8 @@ Miyabi側で許可されている操作は `qstat` / `qsub` / `ls` / `tail` / `g
 
 1. ここ(ローカル)で編集 → `github.com/cspp-lab/miyabi-gh200-stencil` にpush
 2. `payload.sh`が実行時に同リポジトリを`git clone --depth 1`(初回)/`git pull --ff-only`(以降)
-3. `ssh miyabi-agent 'qsub -N test -q debug-g -l select=4:mpiprocs=1:ompthreads=72 -l walltime=00:10:00' < job/payload.sh`
-4. `ssh miyabi-agent 'qstat -u z30105'` で確認、`ssh miyabi-agent 'tail <jobid> -n 50'` / `grep <jobid> -e Error -C 3` で結果確認
+3. `ssh miyabi-agent 'qsub -N test -q debug-g -l select=4:mpiprocs=1:ompthreads=72 -l walltime=00:10:00 -W group_list=gz00 -j oe' < job/payload.sh`
+4. `ssh miyabi-agent 'qstat <jobid>'` で確認、`ssh miyabi-agent 'tail <jobid> -n 50'` / `grep <jobid> -e Error -C 3` で結果確認
 
 ## 環境
 
