@@ -21,8 +21,8 @@ else
 fi
 cd repo
 
-# --- toolchain: adjust to whatever `module avail` shows on this system ---
-module load nvidia nvmpi 2>/dev/null || true
+# --- toolchain ---
+module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 
 make clean && make

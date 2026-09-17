@@ -49,8 +49,7 @@ Miyabi側で許可されている操作は `qstat` / `qsub` / `ls` / `tail` / `g
 3. `ssh miyabi-agent 'qsub -N test -q debug-g -l select=4:mpiprocs=1:ompthreads=72 -l walltime=00:10:00' < job/payload.sh`
 4. `ssh miyabi-agent 'qstat -u z30105'` で確認、`ssh miyabi-agent 'tail <jobid> -n 50'` / `grep <jobid> -e Error -C 3` で結果確認
 
-## 要確認・要調整
+## 環境
 
-- `module load nvidia nvmpi` は仮のプレースホルダ。Miyabi-Gの実際のモジュール名は
-  `module avail` の結果に合わせて `job/payload.sh` を書き換える必要がある。
-- `github.com/cspp-lab/miyabi-gh200-stencil` はこのセッションでは未作成。push前にリポジトリ作成が必要。
+- `module load nvidia/26.3 nv-hpcx`(NVIDIA HPC SDK + HPC-X、`mpicxx`/`nvcc`はこのモジュールで揃う)
+- リポジトリ: https://github.com/cspp-lab/miyabi-gh200-stencil (public)
