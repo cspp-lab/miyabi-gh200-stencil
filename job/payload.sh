@@ -32,8 +32,10 @@ NY=768
 NZ=768
 ITERS=500
 
+MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node -x OMP_NUM_THREADS"
+
 echo "=== naive (blocking halo exchange) ==="
-mpirun -np 4 ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
+mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
 
 echo "=== overlap (comm/compute overlap) ==="
-mpirun -np 4 ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 1
+mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 1
