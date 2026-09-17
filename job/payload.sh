@@ -8,14 +8,13 @@
 #PBS -W group_list=gz00
 #PBS -j oe
 
-#PBSWRAP MODULE nvidia/26.3 nv-hpcx
+#PBSWRAP MODULE nvidia/25.9 nv-hpcx
 
 #PBSWRAP SERIAL
 # Runs once, on rank 0; the wrapper holds every other rank until this
 # block finishes before letting the PARALLEL block below start, so no
 # manual $PBSWRAP_RANK branching or marker-file barrier is needed here.
 cd "${HOME}"
-
 export TMPDIR="${HOME}/tmp"
 mkdir -p "${TMPDIR}"
 
@@ -27,18 +26,26 @@ else
 fi
 cd repo
 
+echo "=== toolchain: nvidia/25.9 ==="
+nvcc --version | tail -1
 make clean && make
 
 #PBSWRAP PARALLEL
 # One sandboxed process per rank; runs naive then overlap internally in a
 # single MPI session (see src/stencil3d.cu).
 cd "${HOME}/repo"
-
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
+./stencil3d 768 768 768 500
 
-NX=768
-NY=768
-NZ=768
-ITERS=500
+#PBSWRAP MODULE nvidia/26.3 nv-hpcx
 
-./stencil3d ${NX} ${NY} ${NZ} ${ITERS}
+#PBSWRAP SERIAL
+cd "${HOME}/repo"
+echo "=== toolchain: nvidia/26.3 ==="
+nvcc --version | tail -1
+make clean && make
+
+#PBSWRAP PARALLEL
+cd "${HOME}/repo"
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
+./stencil3d 768 768 768 500
