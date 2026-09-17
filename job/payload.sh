@@ -42,7 +42,8 @@ NY=768
 NZ=768
 ITERS=500
 
-MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node"
+RUNDIR="$(pwd)"
+MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node --wdir ${RUNDIR}"
 
 echo "=== naive (blocking halo exchange) ==="
 mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
