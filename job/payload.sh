@@ -9,23 +9,22 @@
 #PBS -j oe
 
 #------- Program execution -------#
-# This whole script runs once per rank (sandboxed), so the one-time build
-# (git sync + compile) is guarded to rank 0; every other rank just waits on
-# a marker file on the shared Lustre /work area before running the binary
-# directly (no launcher call needed here - the platform starts one
-# sandboxed rank per process already).
-WORKDIR=/work/gz00/z30105/miyabi-gh200-stencil-run
-DONE_MARKER="${WORKDIR}/.build_done"
+# This body runs once per rank, each inside its own bwrap sandbox where
+# /work is a per-rank empty tmpfs. $HOME (and $PBSWRAP_WORK under it) is
+# bind-mounted from the SAME host directory for every rank of this job
+# (/work/gz00/z30105/demo/runs/<jobid>), so it's the one place all ranks
+# can actually share files - use it, not /work directly.
+cd "${HOME}"
+DONE_MARKER="${HOME}/.build_done"
 
 module purge
 module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
-export TMPDIR="${WORKDIR}/tmp"
+export TMPDIR="${HOME}/tmp"
 
 if [ "${PBSWRAP_RANK:-0}" = "0" ]; then
-  mkdir -p "${WORKDIR}" "${TMPDIR}"
+  mkdir -p "${TMPDIR}"
   rm -f "${DONE_MARKER}"
-  cd "${WORKDIR}"
 
   REPO_URL=https://github.com/cspp-lab/miyabi-gh200-stencil.git
   if [ -d repo/.git ]; then
@@ -39,7 +38,7 @@ if [ "${PBSWRAP_RANK:-0}" = "0" ]; then
   touch "${DONE_MARKER}"
 else
   until [ -f "${DONE_MARKER}" ]; do sleep 2; done
-  cd "${WORKDIR}/repo"
+  cd "${HOME}/repo"
 fi
 
 NX=768
