@@ -30,6 +30,11 @@ module purge
 module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 
+# The per-job /tmp dir this cluster provides isn't reliably writable here;
+# give nvcc a scratch dir we know exists instead.
+export TMPDIR="${WORKDIR}/tmp"
+mkdir -p "${TMPDIR}"
+
 make clean && make
 
 NX=768
