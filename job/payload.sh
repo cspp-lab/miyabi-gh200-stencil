@@ -9,9 +9,10 @@
 #PBS -j oe
 
 #------- Program execution -------#
-# PBS_O_WORKDIR from this cluster's qsub wrapper can point at a directory that
-# doesn't exist yet; use a fixed, always-creatable path under $HOME instead.
-WORKDIR="${HOME}/miyabi-gh200-stencil-run"
+# $HOME on this cluster resolves to a node-local /tmp/work path, not the
+# shared filesystem, so a binary built there is invisible to every node but
+# the one that built it. Use the shared group work area instead.
+WORKDIR="/work/gz00/z30105/miyabi-gh200-stencil-run"
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
 
