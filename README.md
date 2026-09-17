@@ -42,13 +42,15 @@
 
 ### ジョブスクリプトの実行モデル
 
-Miyabi-Gのqsubラッパーは、`#PBSWRAP SERIAL` / `#PBSWRAP PARALLEL` の2種類の行でスクリプトを
-リージョン分割できる:
+Miyabi-Gのqsubラッパーは、`#PBSWRAP SERIAL` / `#PBSWRAP PARALLEL` / `#PBSWRAP MODULE <modules...>`
+の行でスクリプトをリージョン分割できる:
 
 - `SERIAL`リージョン: rank 0だけで1回実行される。
 - `PARALLEL`リージョン: 全ランクでそれぞれサンドボックス化(`bwrap`)されて実行される
   (`mpirun`を書く必要はない。書くとラッパーに拒否される — コメント中の文字列も含めて検出される)。
 - 2リージョン間の同期はラッパーが保証する(SERIALが終わるまで他rankはPARALLELを開始しない)。
+- `MODULE`: サンドボックス内では通常の`module load`シェルコマンドが効かない(`module: command not found`)ため、
+  代わりに`#PBSWRAP MODULE nvidia/26.3 nv-hpcx`のように書くと、以降のリージョンにその環境が適用される。
 
 各サンドボックスは`--tmpfs /work`・`--tmpfs /home`により、`/work`と`/home`が**ランクごとに独立した
 空のtmpfs**に置き換わる(実体ではない)。ランク間で本当に共有される書き込み可能領域は`$HOME`(実体は

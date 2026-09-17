@@ -8,14 +8,14 @@
 #PBS -W group_list=gz00
 #PBS -j oe
 
+#PBSWRAP MODULE nvidia/26.3 nv-hpcx
+
 #PBSWRAP SERIAL
 # Runs once, on rank 0; the wrapper holds every other rank until this
 # block finishes before letting the PARALLEL block below start, so no
 # manual $PBSWRAP_RANK branching or marker-file barrier is needed here.
 cd "${HOME}"
 
-module purge
-module load nvidia/26.3 nv-hpcx
 export TMPDIR="${HOME}/tmp"
 mkdir -p "${TMPDIR}"
 
@@ -34,8 +34,6 @@ make clean && make
 # single MPI session (see src/stencil3d.cu).
 cd "${HOME}/repo"
 
-module purge
-module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 
 NX=768
