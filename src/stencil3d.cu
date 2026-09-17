@@ -19,8 +19,11 @@
 // PROC_NULL recv leaves the ghost layer untouched at its pre-zeroed value,
 // which reproduces the global Dirichlet face for free.
 //
-// Two execution modes, to measure the effect of communication/computation
-// overlap:
+// Runs two execution modes back to back, in a single MPI_Init/MPI_Finalize
+// session (some launchers here don't support a clean second MPI_Init in a
+// fresh process after the first one exits, so both variants have to share
+// one run rather than being two separate invocations), to measure the
+// effect of communication/computation overlap:
 //   mode 0 (naive)   : pack -> blocking Sendrecv x6 -> unpack -> one kernel
 //                       over the whole owned box.
 //   mode 1 (overlap) : pack -> non-blocking Isend/Irecv x6 (12 reqs); the
@@ -29,9 +32,11 @@
 //                       arrived, unpack and update the 1-cell-thick shell
 //                       next to each of the 6 faces.
 //
-// Usage: mpirun -np P ./stencil3d NX NY NZ_GLOBAL ITERS MODE [PX PY PZ]
-//   PX*PY*PZ must equal P if given; omit (or pass 0 0 0) for automatic
-//   factorization via MPI_Dims_create. NX/PX, NY/PY, NZ/PZ must be exact.
+// Usage: ./stencil3d NX NY NZ_GLOBAL ITERS [PX PY PZ]
+//   PX*PY*PZ must equal the rank count if given; omit (or pass 0 0 0) for
+//   automatic factorization via MPI_Dims_create. NX/PX, NY/PY, NZ/PZ must
+//   be exact. Launch under whatever this cluster's job wrapper expects one
+//   MPI rank per process to come from (here: one rank per node already).
 
 #include <cstdio>
 #include <cstdlib>
@@ -181,19 +186,23 @@ int main(int argc, char** argv)
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     g_rank = rank;
 
-    if (argc < 6) {
+    if (argc < 5) {
         if (rank == 0)
-            fprintf(stderr, "usage: %s NX NY NZ_GLOBAL ITERS MODE(0=naive,1=overlap) [PX PY PZ]\n", argv[0]);
+            fprintf(stderr, "usage: %s NX NY NZ_GLOBAL ITERS [PX PY PZ]\n", argv[0]);
         MPI_Finalize();
         return 1;
     }
     int NXg = atoi(argv[1]), NYg = atoi(argv[2]), NZg = atoi(argv[3]);
     int ITERS = atoi(argv[4]);
-    int MODE = atoi(argv[5]);
+    // Runs both the naive and overlap modes back to back, in the same
+    // MPI session: this runtime's ORTE/PMIx doesn't support a clean second
+    // MPI_Init after MPI_Finalize within the same sandboxed job step, so a
+    // separate process per mode (two invocations of this binary) isn't an
+    // option here - both comparisons have to happen inside one run.
 
     int dims[3] = {0, 0, 0};
-    if (argc >= 9) {
-        dims[0] = atoi(argv[6]); dims[1] = atoi(argv[7]); dims[2] = atoi(argv[8]);
+    if (argc >= 8) {
+        dims[0] = atoi(argv[5]); dims[1] = atoi(argv[6]); dims[2] = atoi(argv[7]);
         if ((long)dims[0] * dims[1] * dims[2] != nprocs) {
             if (rank == 0) fprintf(stderr, "PX*PY*PZ (%d*%d*%d) must equal nranks (%d)\n", dims[0], dims[1], dims[2], nprocs);
             MPI_Finalize(); return 1;
@@ -246,12 +255,27 @@ int main(int argc, char** argv)
     CUDA_CHECK(cudaMalloc(&szm_, sizeZ * sizeof(double))); CUDA_CHECK(cudaMalloc(&szp_, sizeZ * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&rzm_, sizeZ * sizeof(double))); CUDA_CHECK(cudaMalloc(&rzp_, sizeZ * sizeof(double)));
 
+    const double lambda = 1.0 / 7.0; // < 1/6 explicit-scheme stability bound, with margin
+
+    dim3 blk(8, 8, 4);
+    cudaStream_t s_interior, s_boundary;
+    CUDA_CHECK(cudaStreamCreate(&s_interior));
+    CUDA_CHECK(cudaStreamCreate(&s_boundary));
+
+    double *d_sumsq;
+    CUDA_CHECK(cudaMalloc(&d_sumsq, sizeof(double)));
+
+    double* h_slab = (double*)malloc((size_t)nxl * nyl * sizeof(double));
+
+  for (int MODE = 0; MODE <= 1; ++MODE) {
     // Initial condition: Gaussian bump at the global domain center, built on the
     // Grace CPU (OpenMP over its cores) one local Z-layer at a time, then staged
     // to the GPU across NVLink C2C with a single cudaMemcpy2D per layer (handles
-    // the X ghost padding without a per-row copy).
+    // the X ghost padding without a per-row copy). Rebuilt fresh for each mode
+    // so naive and overlap start from the identical state.
+    CUDA_CHECK(cudaMemset(d_u0, 0, nbytes));
+    CUDA_CHECK(cudaMemset(d_u1, 0, nbytes));
     {
-        double* h_slab = (double*)malloc((size_t)nxl * nyl * sizeof(double));
         double cx = NXg * 0.5, cy = NYg * 0.5, cz = NZg * 0.5;
         double sigma2 = 0.02 * (double)NXg * (double)NXg;
         for (int lz = 1; lz <= nzl; ++lz) {
@@ -272,18 +296,7 @@ int main(int argc, char** argv)
             CUDA_CHECK(cudaMemcpy2D(dst, sx * sizeof(double), h_slab, nxl * sizeof(double),
                                      nxl * sizeof(double), nyl, cudaMemcpyHostToDevice));
         }
-        free(h_slab);
     }
-
-    const double lambda = 1.0 / 7.0; // < 1/6 explicit-scheme stability bound, with margin
-
-    dim3 blk(8, 8, 4);
-    cudaStream_t s_interior, s_boundary;
-    CUDA_CHECK(cudaStreamCreate(&s_interior));
-    CUDA_CHECK(cudaStreamCreate(&s_boundary));
-
-    double *d_sumsq;
-    CUDA_CHECK(cudaMalloc(&d_sumsq, sizeof(double)));
 
     double *u_old = d_u0, *u_new = d_u1;
     int report_every = (ITERS >= 5) ? ITERS / 5 : 1;
@@ -398,6 +411,8 @@ int main(int argc, char** argv)
                MODE == 0 ? "naive" : "overlap", nprocs, dims[0], dims[1], dims[2],
                NXg, NYg, NZg, ITERS, max_time, max_comm, gflops, gbps);
     }
+  } // for MODE
+    free(h_slab);
 
     cudaFree(d_sumsq);
     cudaFree(d_u0); cudaFree(d_u1);

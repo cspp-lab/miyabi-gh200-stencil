@@ -46,8 +46,5 @@ NY=768
 NZ=768
 ITERS=500
 
-if [ "${PBSWRAP_RANK:-0}" = "0" ]; then echo "=== naive (blocking halo exchange) ==="; fi
-./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
-
-if [ "${PBSWRAP_RANK:-0}" = "0" ]; then echo "=== overlap (comm/compute overlap) ==="; fi
-./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 1
+# Runs naive then overlap internally, in one MPI session (see src/stencil3d.cu).
+./stencil3d ${NX} ${NY} ${NZ} ${ITERS}
