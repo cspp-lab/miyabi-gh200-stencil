@@ -8,8 +8,11 @@
 #PBS -W group_list=gz00
 #PBS -j oe
 
-#------- Program execution -------#
-WORKDIR="${HOME}/miyabi-gh200-stencil-run"
+#------- Build (plain shell; runs once, not through mpirun) -------#
+# /work is Lustre and is genuinely shared/identical across every node of the
+# job (confirmed via diagnostic job); $HOME is not, so the build output must
+# live here for the "./stencil3d ..." launch below to see it on every node.
+WORKDIR=/work/gz00/z30105/miyabi-gh200-stencil-run
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
 
@@ -23,7 +26,6 @@ else
 fi
 cd repo
 
-# --- toolchain ---
 module purge
 module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
@@ -35,19 +37,16 @@ mkdir -p "${TMPDIR}"
 
 make clean && make
 
+#------- Program execution -------#
+# Writing "./stencil3d ..." here runs as `mpirun bwrap ... ./stencil3d ...`
+# across all allocated nodes; no explicit --hostfile/--map-by/--wdir needed.
 NX=768
 NY=768
 NZ=768
 ITERS=500
 
-RUNDIR="$(pwd)"
-MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node --wdir ${RUNDIR}"
-
-echo "=== visibility check across nodes ==="
-mpirun ${MPIRUN_OPTS} bash -c 'echo "$(hostname): $(pwd) -> $(ls -la ./stencil3d 2>&1)"'
-
 echo "=== naive (blocking halo exchange) ==="
-mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
+./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
 
 echo "=== overlap (comm/compute overlap) ==="
-mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 1
+./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 1
