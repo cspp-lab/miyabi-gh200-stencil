@@ -9,10 +9,7 @@
 #PBS -j oe
 
 #------- Program execution -------#
-# $HOME on this cluster resolves to a node-local /tmp/work path, not the
-# shared filesystem, so a binary built there is invisible to every node but
-# the one that built it. Use the shared group work area instead.
-WORKDIR="/work/gz00/z30105/miyabi-gh200-stencil-run"
+WORKDIR="${HOME}/miyabi-gh200-stencil-run"
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
 
@@ -45,6 +42,9 @@ ITERS=500
 
 RUNDIR="$(pwd)"
 MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node --wdir ${RUNDIR}"
+
+echo "=== visibility check across nodes ==="
+mpirun ${MPIRUN_OPTS} bash -c 'echo "$(hostname): $(pwd) -> $(ls -la ./stencil3d 2>&1)"'
 
 echo "=== naive (blocking halo exchange) ==="
 mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
