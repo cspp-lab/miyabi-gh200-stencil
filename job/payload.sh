@@ -9,7 +9,11 @@
 #PBS -j oe
 
 #------- Program execution -------#
-cd ${PBS_O_WORKDIR}
+# PBS_O_WORKDIR from this cluster's qsub wrapper can point at a directory that
+# doesn't exist yet; use a fixed, always-creatable path under $HOME instead.
+WORKDIR="${HOME}/miyabi-gh200-stencil-run"
+mkdir -p "${WORKDIR}"
+cd "${WORKDIR}"
 
 # --- sync code from github.com/cspp-lab (Miyabi side only ever runs qsub; the
 #     git pull happens here, inside the job payload, at job start) ---
@@ -22,6 +26,7 @@ fi
 cd repo
 
 # --- toolchain ---
+module purge
 module load nvidia/26.3 nv-hpcx
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 
@@ -32,7 +37,7 @@ NY=768
 NZ=768
 ITERS=500
 
-MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node -x OMP_NUM_THREADS"
+MPIRUN_OPTS="-np 4 --hostfile ${PBS_NODEFILE} --map-by ppr:1:node"
 
 echo "=== naive (blocking halo exchange) ==="
 mpirun ${MPIRUN_OPTS} ./stencil3d ${NX} ${NY} ${NZ} ${ITERS} 0
