@@ -364,8 +364,14 @@ int main(int argc, char** argv)
             // 1-cell-thick shell next to each of the 6 faces (harmlessly
             // recomputes the 12 edges/8 corners more than once: same
             // deterministic formula, so redundant but not incorrect).
-            dim3 gyz((nyl + blk.y - 1) / blk.y, (nzl + blk.z - 1) / blk.z, 1);
-            dim3 gxz((nxl + blk.x - 1) / blk.x, (nzl + blk.z - 1) / blk.z, 1);
+            // The singleton axis (the face's fixed coordinate) must line up
+            // with the grid component that matches its degenerate (size-1)
+            // block dimension below, since stencil_kernel maps blockIdx.x/y/z
+            // to lx/ly/lz respectively - putting the "1" in the wrong slot
+            // silently limits that axis to blockDim-many cells instead of
+            // covering the full face.
+            dim3 gyz(1, (nyl + blk.y - 1) / blk.y, (nzl + blk.z - 1) / blk.z);
+            dim3 gxz((nxl + blk.x - 1) / blk.x, 1, (nzl + blk.z - 1) / blk.z);
             dim3 gxy((nxl + blk.x - 1) / blk.x, (nyl + blk.y - 1) / blk.y, 1);
             dim3 b1(blk.x, blk.y, 1);
             stencil_kernel<<<gyz, dim3(1, blk.y, blk.z), 0, s_boundary>>>(u_old, u_new, nxl, nyl, nzl, gx0, gy0, gz0, NXg, NYg, NZg, 1, 1, 1, nyl, 1, nzl, lambda);
