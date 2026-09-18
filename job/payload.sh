@@ -8,7 +8,7 @@
 #PBS -W group_list=gz00
 #PBS -j oe
 
-#PBSWRAP MODULE nvidia/25.9 nv-hpcx
+#PBSWRAP MODULE nvidia/26.3 nv-hpcx
 
 #PBSWRAP SERIAL
 # Runs once, on rank 0; the wrapper holds every other rank until this
@@ -26,26 +26,18 @@ else
 fi
 cd repo
 
-echo "=== toolchain: nvidia/25.9 ==="
-nvcc --version | tail -1
-make clean && make
-
-#PBSWRAP PARALLEL
-# One sandboxed process per rank; runs naive then overlap internally in a
-# single MPI session (see src/stencil3d.cu).
-cd "${HOME}/repo"
-export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
-./stencil3d 768 768 768 500
-
-#PBSWRAP MODULE nvidia/26.3 nv-hpcx
-
-#PBSWRAP SERIAL
-cd "${HOME}/repo"
 echo "=== toolchain: nvidia/26.3 ==="
 nvcc --version | tail -1
 make clean && make
 
 #PBSWRAP PARALLEL
+# One sandboxed process per rank; each binary runs naive then overlap
+# internally in a single MPI session (see src/stencil3d.cu / stencil3d_acc.cpp).
+# Same toolchain, domain, and iteration count for both binaries so the
+# RESULT lines (impl=cuda vs impl=acc) are directly comparable.
 cd "${HOME}/repo"
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
+echo "=== impl: CUDA ==="
 ./stencil3d 768 768 768 500
+echo "=== impl: OpenACC ==="
+./stencil3d_acc 768 768 768 500

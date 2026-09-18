@@ -407,7 +407,7 @@ int main(int argc, char** argv)
         double npoints = (double)NXg * NYg * NZg;
         double gflops = 9.0 * npoints * ITERS / max_time / 1e9;   // 9 flops/point/iter
         double gbps   = 16.0 * npoints * ITERS / max_time / 1e9;  // 1 read + 1 write, 8B doubles
-        printf("RESULT mode=%s ranks=%d grid=%dx%dx%d domain=%dx%dx%d iters=%d time_s=%.4f comm_s=%.4f gflops=%.2f gbps=%.2f\n",
+        printf("RESULT impl=cuda mode=%s ranks=%d grid=%dx%dx%d domain=%dx%dx%d iters=%d time_s=%.4f comm_s=%.4f gflops=%.2f gbps=%.2f\n",
                MODE == 0 ? "naive" : "overlap", nprocs, dims[0], dims[1], dims[2],
                NXg, NYg, NZg, ITERS, max_time, max_comm, gflops, gbps);
     }

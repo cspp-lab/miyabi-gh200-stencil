@@ -1,31 +1,59 @@
 # GH200 3D stencil example (Miyabi-G, 4 nodes)
 
-3D 7点ステンシル(拡散方程式のJacobi陽解法)を、Miyabi-Gの4ノード(GH200×4、1ノード1GPU)上でMPI+CUDAで解く例題。
+3D 7点ステンシル(拡散方程式のJacobi陽解法)を、Miyabi-Gの4ノード(GH200×4、1ノード1GPU)上で
+MPI+CUDA、およびMPI+OpenACCの2通りで解く例題。両実装は分割方式・ハロー交換・実行モード・
+出力フォーマットが同一になるよう作られており、`RESULT`行を突き合わせるだけで直接比較できる。
 
 ## 構成
 
-- `src/stencil3d.cu` — 本体。プロセスグリッドは `MPI_Dims_create` + `MPI_Cart_create` で
+- `src/stencil3d.cu` — CUDA版。プロセスグリッドは `MPI_Dims_create` + `MPI_Cart_create` で
   Px×Py×Pzに自動分割(明示指定も可)。分割数に上限はなく、64分割以上でも同じコードパスで動く
   (実機での大規模検証は未実施)。7点ステンシルは面隣接のみで完結するため、6面のみ交換すればよく、
-  稜線・頂点の交換は不要。
-- `Makefile` — `nvcc -ccbin mpicxx -arch=sm_90` でビルド。
-- `job/payload.sh` — Miyabi-G向けPBSジョブスクリプト(`qsub`投入用)。
+  稜線・頂点の交換は不要。GPUカーネルはCUDA `__global__`関数として記述。
+- `src/stencil3d_acc.cpp` — OpenACC版。ドメイン分割・ハロー交換・境界条件・2実行モードは
+  CUDA版と完全に同一の設計。GPUカーネル部分だけを`#pragma acc parallel loop`に置き換え、
+  CUDAストリーム(`s_interior`/`s_boundary`)はOpenACCの非同期キュー(`async(1)`/`async(2)`)に
+  対応させている。MPI通信にはデバイスポインタをそのまま渡す(`#pragma acc host_data
+  use_device`)ため、CUDA版同様GPU-aware MPIが前提。
+- `Makefile` — CUDA版は `nvcc -ccbin mpicxx -arch=sm_90`、OpenACC版は
+  `mpicxx -acc=gpu -gpu=cc90 -mp` でビルド(`make` で両方ビルドされる)。
+- `job/payload.sh` — Miyabi-G向けPBSジョブスクリプト(`qsub`投入用)。同一ツールチェイン
+  (`nvidia/26.3`)で両バイナリをビルドし、同一ドメイン・反復数で連続実行してCUDA版とOpenACC版を
+  比較する。
 
 ## 実行モード
 
-`./stencil3d NX NY NZ ITERS [PX PY PZ]` を1回実行すると、**同一のMPIセッション内で**naive→overlapの
-順に両方走る(このクラスタのジョブラッパーは、1プロセス1回のジョブ実行内で`MPI_Init`をやり直すことに
-対応していなかったため、2つのバイナリ起動ではなく1プロセス内のモード切替えにしている):
+`./stencil3d NX NY NZ ITERS [PX PY PZ]` (OpenACC版は `./stencil3d_acc`)を1回実行すると、
+**同一のMPIセッション内で**naive→overlapの順に両方走る(このクラスタのジョブラッパーは、
+1プロセス1回のジョブ実行内で`MPI_Init`をやり直すことに対応していなかったため、2つのバイナリ
+起動ではなく1プロセス内のモード切替えにしている):
 
-- naive: pack → ブロッキング `MPI_Sendrecv`×6 → unpack → 全領域を1カーネルで更新。
-- overlap: pack → 非ブロッキング `Isend/Irecv`×12 → ハロー未参照の内部領域を別ストリームで
-  計算しつつ通信を進行 → `Waitall` → unpack → 各面に接する厚さ1のシェルのみ再計算。
+- naive: pack → ブロッキング `MPI_Sendrecv`×6 → unpack → 全領域を1回の計算で更新。
+- overlap: pack → 非ブロッキング `Isend/Irecv`×12 → ハロー未参照の内部領域を別ストリーム/
+  非同期キューで計算しつつ通信を進行 → `Waitall` → unpack → 各面に接する厚さ1のシェルのみ再計算。
 
-各モードの最後に `RESULT ...` 行でGFLOP/s・実効帯域(GB/s)・通信時間を出力し、直接比較できる。
+各モードの最後に `RESULT impl=<cuda|acc> ...` 行でGFLOP/s・実効帯域(GB/s)・通信時間を出力し、
+CUDA版とOpenACC版を直接比較できる(`job/payload.sh`は両バイナリを1ジョブ内で連続実行するので、
+出力ログを`grep RESULT`するだけで4行——CUDA naive/overlap、OpenACC naive/overlap——並ぶ)。
 
 境界条件は全域Dirichlet(値0)で、ステンシルが触れない境界セルを単に更新しないことで実現している
 (ノード間境界を跨がない場合も含め特別扱い不要)。`L2(u)`の出力は単調減少するはずで、崩れていれば
 ハロー交換のバグを疑う簡易チェックになる。
+
+## CUDA版とOpenACC版の違い
+
+- **カーネル記述**: CUDA版は`__global__`関数+`<<<grid,block>>>`起動。OpenACC版は
+  `#pragma acc parallel loop collapse(3)`によるディレクティブ指定で、コンパイラ(`nvc++`)が
+  スレッド/ブロック分割を生成する。
+- **非同期実行**: CUDA版のストリーム(`cudaStreamCreate`/`cudaStreamSynchronize`)に対応するのが
+  OpenACC版の非同期キュー(`async(queue)`/`#pragma acc wait(queue)`)。
+- **デバイスメモリ**: CUDA版は`cudaMalloc`で明示確保。OpenACC版はホスト側`malloc`した配列を
+  `#pragma acc enter data create`でデバイスにも確保する構造化されない(unstructured)データ
+  ライフタイムを使用。
+- **初期化**: CUDA版はZ層ごとに`cudaMemcpy2D`でホスト→デバイス転送するが、OpenACC版はホスト側で
+  ローカル領域全体をOpenMPで組み立ててから`#pragma acc update device`で一括転送する(定常状態の
+  反復ループの性能比較には影響しない)。
+- 上記以外(分割方式・ハロー交換・境界条件・2実行モード・GFLOPS/GB/s算出式)はすべて同一。
 
 ## Miyabi-Gでの実行(token消費)
 
@@ -56,7 +84,7 @@ Miyabi-Gのqsubラッパーは、`#PBSWRAP SERIAL` / `#PBSWRAP PARALLEL` / `#PBS
 空のtmpfs**に置き換わる(実体ではない)。ランク間で本当に共有される書き込み可能領域は`$HOME`(実体は
 `/work/gz00/<group>/demo/runs/<jobid>`、同一ジョブの全ランクで同じホストディレクトリがbindされる)
 だけなので、ビルド成果物や中間ファイルは**必ず`$HOME`配下**に置く。`job/payload.sh`では
-`SERIAL`でgit sync・ビルドを行い、`PARALLEL`で`./stencil3d`を実行している。
+`SERIAL`でgit sync・ビルドを行い、`PARALLEL`で`./stencil3d`と`./stencil3d_acc`を実行している。
 
 ### 同期・投入フロー
 
@@ -70,5 +98,6 @@ Miyabi側で許可されている操作は `qstat` / `qsub` / `ls` / `tail` / `g
 
 ## 環境
 
-- `module load nvidia/26.3 nv-hpcx`(NVIDIA HPC SDK + HPC-X、`mpicxx`/`nvcc`はこのモジュールで揃う)
+- `module load nvidia/26.3 nv-hpcx`(NVIDIA HPC SDK + HPC-X、`mpicxx`/`nvcc`/OpenACC対応`nvc++`は
+  このモジュールで揃う)
 - リポジトリ: https://github.com/cspp-lab/miyabi-gh200-stencil (public)
