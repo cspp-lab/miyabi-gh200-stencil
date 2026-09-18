@@ -33,10 +33,10 @@ make clean && make
 #PBSWRAP PARALLEL
 # One sandboxed process per rank; this binary runs naive then overlap
 # internally in a single MPI session (see src/stencil3d.cu). A PARALLEL
-# region supports exactly one mpirun-launched program, so the CUDA and
-# OpenACC binaries each need their own SERIAL/PARALLEL pair below rather
-# than two invocations back to back in one PARALLEL block (a second
-# MPI_Init in the same region fails with "getting local rank failed").
+# region only launches one program, so the CUDA and OpenACC binaries
+# each need their own SERIAL/PARALLEL pair below rather than two
+# invocations back to back in one PARALLEL block (a second MPI_Init in
+# the same region fails with "getting local rank failed").
 cd "${HOME}/repo"
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 echo "=== impl: CUDA ==="
