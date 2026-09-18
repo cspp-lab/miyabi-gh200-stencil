@@ -84,7 +84,10 @@ Miyabi-Gのqsubラッパーは、`#PBSWRAP SERIAL` / `#PBSWRAP PARALLEL` / `#PBS
 空のtmpfs**に置き換わる(実体ではない)。ランク間で本当に共有される書き込み可能領域は`$HOME`(実体は
 `/work/gz00/<group>/demo/runs/<jobid>`、同一ジョブの全ランクで同じホストディレクトリがbindされる)
 だけなので、ビルド成果物や中間ファイルは**必ず`$HOME`配下**に置く。`job/payload.sh`では
-`SERIAL`でgit sync・ビルドを行い、`PARALLEL`で`./stencil3d`と`./stencil3d_acc`を実行している。
+最初の`SERIAL`でgit sync・両バイナリのビルドを行い、`PARALLEL`で`./stencil3d`を実行する。
+1つの`PARALLEL`リージョンにつきmpirunで起動できるプログラムは1つだけ(同一リージョン内で
+2回目の起動をすると`MPI_Init`が`getting local rank failed`で失敗する)なので、続けて
+`SERIAL`→`PARALLEL`をもう一組はさんで`./stencil3d_acc`を実行している。
 
 ### 同期・投入フロー
 

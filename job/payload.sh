@@ -31,13 +31,24 @@ nvcc --version | tail -1
 make clean && make
 
 #PBSWRAP PARALLEL
-# One sandboxed process per rank; each binary runs naive then overlap
-# internally in a single MPI session (see src/stencil3d.cu / stencil3d_acc.cpp).
-# Same toolchain, domain, and iteration count for both binaries so the
-# RESULT lines (impl=cuda vs impl=acc) are directly comparable.
+# One sandboxed process per rank; this binary runs naive then overlap
+# internally in a single MPI session (see src/stencil3d.cu). A PARALLEL
+# region supports exactly one mpirun-launched program, so the CUDA and
+# OpenACC binaries each need their own SERIAL/PARALLEL pair below rather
+# than two invocations back to back in one PARALLEL block (a second
+# MPI_Init in the same region fails with "getting local rank failed").
 cd "${HOME}/repo"
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 echo "=== impl: CUDA ==="
 ./stencil3d 768 768 768 500
+
+#PBSWRAP SERIAL
+cd "${HOME}/repo"
+
+#PBSWRAP PARALLEL
+# Same toolchain, domain, and iteration count as the CUDA run above, so
+# the RESULT lines (impl=cuda vs impl=acc) are directly comparable.
+cd "${HOME}/repo"
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-72}
 echo "=== impl: OpenACC ==="
 ./stencil3d_acc 768 768 768 500
