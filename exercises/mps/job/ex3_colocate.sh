@@ -20,7 +20,7 @@
 #PBSWRAP SERIAL
 cd "${HOME}"
 export TMPDIR="${HOME}/tmp"; mkdir -p "${TMPDIR}"
-git clone --depth 1 https://github.com/cspp-lab/miyabi-gh200-stencil.git repo
+git clone --depth 1 -b "${REPO_BRANCH:-mps-test}" https://github.com/cspp-lab/miyabi-gh200-stencil.git repo
 make -C repo stencil3d
 cd repo/exercises/mps && make
 . job/mps_env.sh
